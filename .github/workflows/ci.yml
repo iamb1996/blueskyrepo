@@ -11,17 +11,32 @@ on:
 
 jobs:
   tests:
-    name: Python Tests
+    name: RAG Tests
     runs-on: ubuntu-latest
 
     steps:
+
+      # =====================================================
+      # CHECKOUT
+      # =====================================================
+
       - name: Checkout repository
         uses: actions/checkout@v4
+
+
+      # =====================================================
+      # PYTHON
+      # =====================================================
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+
+
+      # =====================================================
+      # INSTALL DEPENDENCIES
+      # =====================================================
 
       - name: Install dependencies
         run: |
@@ -29,6 +44,100 @@ jobs:
           pip install -r requirements.txt
           pip install pytest
 
+
+      # =====================================================
+      # START REQUIRED SERVICES
+      # =====================================================
+
+      - name: Start MongoDB, Qdrant and Ollama
+        run: |
+          docker compose up -d mongodb qdrant ollama
+
+
+      # =====================================================
+      # WAIT FOR QDRANT
+      # =====================================================
+
+      - name: Wait for Qdrant
+        run: |
+          echo "Waiting for Qdrant..."
+
+          for i in {1..30}; do
+            if curl -f http://localhost:6333/collections; then
+              echo "Qdrant is ready"
+              break
+            fi
+
+            echo "Qdrant not ready yet..."
+            sleep 2
+          done
+
+
+      # =====================================================
+      # WAIT FOR MONGODB
+      # =====================================================
+
+      - name: Wait for MongoDB
+        run: |
+          echo "Waiting for MongoDB..."
+
+          for i in {1..30}; do
+            if docker compose exec -T mongodb mongosh --quiet --eval "db.adminCommand('ping')" > /dev/null 2>&1; then
+              echo "MongoDB is ready"
+              break
+            fi
+
+            echo "MongoDB not ready yet..."
+            sleep 2
+          done
+
+
+      # =====================================================
+      # WAIT FOR OLLAMA
+      # =====================================================
+
+      - name: Wait for Ollama
+        run: |
+          echo "Waiting for Ollama..."
+
+          for i in {1..30}; do
+            if curl -f http://localhost:11434/api/tags; then
+              echo "Ollama is ready"
+              break
+            fi
+
+            echo "Ollama not ready yet..."
+            sleep 2
+          done
+
+
+      # =====================================================
+      # RUN TESTS
+      # =====================================================
+
       - name: Run tests
         run: |
           pytest -v
+
+
+      # =====================================================
+      # LOGS IF TESTS FAIL
+      # =====================================================
+
+      - name: Show Docker logs
+        if: failure()
+        run: |
+          docker compose ps
+          docker compose logs mongodb
+          docker compose logs qdrant
+          docker compose logs ollama
+
+
+      # =====================================================
+      # CLEANUP
+      # =====================================================
+
+      - name: Stop Docker services
+        if: always()
+        run: |
+          docker compose down -v
