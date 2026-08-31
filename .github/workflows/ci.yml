@@ -10,13 +10,12 @@ on:
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     steps:
 
       # ==========================================================
-      # 1. Récupérer le projet
+      # 1. Récupérer le repository
       # ==========================================================
 
       - name: Checkout repository
@@ -37,14 +36,40 @@ jobs:
       # 3. Installer les dépendances
       # ==========================================================
 
-      - name: Install Python dependencies
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
 
 
       # ==========================================================
-      # 4. Démarrer les services nécessaires aux tests
+      # 4. Créer .env pour GitHub Actions
+      # ==========================================================
+
+      - name: Create .env
+        run: |
+          cat > .env <<'EOF'
+          MONGO_URI=mongodb://mongodb:27017
+          MONGO_DATABASE=bluesky
+          MONGO_COLLECTION=posts
+
+          OLLAMA_HOST=http://ollama:11434
+          EMBEDDING_MODEL=nomic-embed-text
+          EMBEDDING_POLL_INTERVAL=2
+
+          QDRANT_HOST=qdrant
+          QDRANT_PORT=6333
+          QDRANT_COLLECTION=bluesky_posts
+          QDRANT_BATCH_SIZE=100
+          QDRANT_POLL_INTERVAL=2
+
+          LLM_MODEL=qwen3:8b
+          RAG_TOP_K=5
+          EOF
+
+
+      # ==========================================================
+      # 5. Démarrer les services nécessaires
       # ==========================================================
 
       - name: Start MongoDB, Qdrant and Ollama
@@ -53,7 +78,7 @@ jobs:
 
 
       # ==========================================================
-      # 5. Vérifier les conteneurs
+      # 6. Vérifier les conteneurs
       # ==========================================================
 
       - name: Check Docker services
@@ -62,7 +87,7 @@ jobs:
 
 
       # ==========================================================
-      # 6. Attendre le démarrage des services
+      # 7. Attendre le démarrage des services
       # ==========================================================
 
       - name: Wait for services
@@ -71,7 +96,7 @@ jobs:
 
 
       # ==========================================================
-      # 7. Télécharger le modèle Ollama
+      # 8. Télécharger le modèle d'embedding Ollama
       # ==========================================================
 
       - name: Pull Ollama embedding model
@@ -80,7 +105,7 @@ jobs:
 
 
       # ==========================================================
-      # 8. Vérifier le modèle Ollama
+      # 9. Vérifier Ollama
       # ==========================================================
 
       - name: Verify Ollama model
@@ -89,22 +114,48 @@ jobs:
 
 
       # ==========================================================
-      # 9. Lancer les tests
+      # 10. Vérifier Qdrant
+      # ==========================================================
+
+      - name: Verify Qdrant
+        run: |
+          curl --fail http://localhost:6333/collections
+
+
+      # ==========================================================
+      # 11. Vérifier MongoDB
+      # ==========================================================
+
+      - name: Verify MongoDB
+        run: |
+          docker compose exec -T mongodb mongosh --quiet --eval "db.adminCommand('ping')"
+
+
+      # ==========================================================
+      # 12. Lancer les tests
       # ==========================================================
 
       - name: Run pytest
         env:
+          MONGO_URI: mongodb://localhost:27017
+          MONGO_DATABASE: bluesky
+          MONGO_COLLECTION: posts
+
           OLLAMA_HOST: http://localhost:11434
+          EMBEDDING_MODEL: nomic-embed-text
+
           QDRANT_HOST: localhost
           QDRANT_PORT: "6333"
-          MONGODB_HOST: localhost
-          MONGODB_PORT: "27017"
+          QDRANT_COLLECTION: bluesky_posts
+
+          LLM_MODEL: qwen3:8b
+          RAG_TOP_K: "5"
         run: |
           pytest -v
 
 
       # ==========================================================
-      # 10. Afficher les logs en cas d'échec
+      # 13. Afficher les logs si un test échoue
       # ==========================================================
 
       - name: Show Docker logs on failure
@@ -114,7 +165,7 @@ jobs:
 
 
       # ==========================================================
-      # 11. Nettoyer
+      # 14. Nettoyage
       # ==========================================================
 
       - name: Stop Docker services
