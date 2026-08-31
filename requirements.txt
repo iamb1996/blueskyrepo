@@ -1,0 +1,12 @@
+atproto
+kafka-python
+pymongo
+python-dotenv
+ollama
+qdrant-client
+langdetect
+requests
+python-dotenv
+fastapi
+uvicorn
+pytest
